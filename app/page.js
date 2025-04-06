@@ -1,8 +1,12 @@
 // pages/index.js
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
-import { supabase } from '../lib/supabaseClient'; // Ensure this path is correct for your project
+import { useState, useEffect, useRef, useCallback } from 'react';
+// Import useSearchParams from next/navigation for App Router
+import { useSearchParams } from 'next/navigation';
+import { supabase } from '../lib/supabaseClient'; // Ensure this path is correct
+
+// --- SVG Icon, GlobalStyles, Styles remain the same ---
 
 // Simple SVG Magnifying Glass Icon component
 const SearchIcon = () => (
@@ -23,8 +27,6 @@ const SearchIcon = () => (
 );
 
 // Add keyframes for spinner animation globally
-// If using Next.js default styling (global CSS or CSS Modules), put this in a CSS file.
-// Using <style jsx global> tag for self-contained example.
 const GlobalStyles = () => (
   <style jsx global>{`
     @keyframes spin {
@@ -35,7 +37,6 @@ const GlobalStyles = () => (
 );
 
 // --- Styles ---
-// Define styles outside the component for better readability
 const styles = {
   pageContainer: {
     display: 'flex',
@@ -46,7 +47,6 @@ const styles = {
     padding: '20px',
     boxSizing: 'border-box',
   },
-  // Input View Styles
   formContainer: {
     width: '100%',
     maxWidth: '600px',
@@ -67,7 +67,7 @@ const styles = {
     outline: 'none',
     fontSize: '1rem',
     backgroundColor: 'transparent',
-    paddingRight: '60px',
+    paddingRight: '60px', // Ensure space for the button
     height: '45px',
     boxSizing: 'border-box',
     color:"black",
@@ -101,7 +101,6 @@ const styles = {
     height: '20px',
     animation: 'spin 1s linear infinite',
   },
-  // Result View Styles
   resultContainer: {
     display: 'flex',
     flexDirection: 'column',
@@ -120,7 +119,7 @@ const styles = {
   },
   resultText: {
     fontSize: '1.2rem',
-    color: '#333',
+    color: '#333', // Changed for better visibility on default background
     maxWidth: '600px',
     wordWrap: 'break-word',
   },
@@ -131,47 +130,53 @@ const styles = {
 export default function Home() {
   const [inputValue, setInputValue] = useState('');
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null); // Keep error state for logic, don't display
+  const [error, setError] = useState(null);
   const [submittedTask, setSubmittedTask] = useState(null);
   const [resultValue, setResultValue] = useState(null);
 
   const subscriptionRef = useRef(null);
+  const initialQueryProcessed = useRef(false); // Ref to track if initial query param has been processed
 
-  const handleSubmit = async (event) => {
-    event.preventDefault();
-    if (!inputValue.trim()) {
-      console.warn("Input cannot be empty.");
+  // Get search params
+  const searchParams = useSearchParams();
+
+  // --- Core Submission Logic ---
+  // Encapsulated the submission logic in a useCallback to ensure its identity is stable
+  // across renders, preventing unnecessary re-runs of the useEffect that depends on it.
+  const submitUrl = useCallback(async (urlToSubmit) => {
+    // Basic validation
+    if (!urlToSubmit || !urlToSubmit.trim()) {
+      console.warn("Input URL cannot be empty.");
+      setError("Input URL cannot be empty."); // Optionally show user-friendly error
       return;
-    } else if (!inputValue.includes("media.licdn.com")){
-      console.warn("URL must be a LinkedIn profile URL")
+    } else if (!urlToSubmit.includes("media.licdn.com")) {
+      console.warn("URL must be a LinkedIn media URL");
+      setError("URL must be a LinkedIn media URL."); // Optionally show user-friendly error
       return;
     }
+
+    console.log("Attempting to submit URL:", urlToSubmit);
     setLoading(true);
     setError(null);
     setResultValue(null);
-    // Reset submittedTask ONLY when starting a NEW submission
-    // If you want the old image/result to disappear immediately on submit, uncomment the line below
-    // setSubmittedTask(null);
+    setSubmittedTask(null); // Clear previous task/result immediately
 
-    let tempSubmittedTask = null; // Use a temporary variable
+    let tempSubmittedTask = null;
 
     try {
       const { data, error: insertError } = await supabase
         .from('ImageURLs')
-        .insert([{ url: inputValue, job_status: 'pending' }])
+        .insert([{ url: urlToSubmit, job_status: 'pending' }])
         .select()
         .single();
 
       if (insertError) throw insertError;
 
       if (data) {
-        console.log('Task submitted:', data);
-        tempSubmittedTask = data; // Store in temp variable first
-        // Clear input ONLY on successful submission start
-        // Keep the old URL in state until the new result arrives if needed,
-        // but we want to trigger the useEffect, so setSubmittedTask
-        setSubmittedTask(tempSubmittedTask); // This triggers the useEffect
-        setInputValue('');
+        console.log('Task submitted successfully:', data);
+        tempSubmittedTask = data;
+        setSubmittedTask(tempSubmittedTask); // Trigger useEffect for subscription
+        // Don't clear inputValue here, especially if it came from query param
       } else {
         throw new Error("No data returned after insert.");
       }
@@ -180,26 +185,58 @@ export default function Home() {
       setError(err.message || "Failed to submit task.");
       setSubmittedTask(null); // Clear task on error
     } finally {
-      // Set loading false *after* state updates related to submission
-      setLoading(false);
+      // Important: Set loading to false *after* potentially setting submittedTask
+      // to ensure the subscription useEffect can trigger correctly.
+       setLoading(false);
     }
+  }, [supabase]); // Dependency: supabase client instance
+
+  // --- Effect to handle initial query parameter ---
+  useEffect(() => {
+    const queryUrl = searchParams.get('q');
+
+    // Process only if:
+    // 1. A 'q' param exists.
+    // 2. We haven't processed the initial query param yet in this component instance.
+    // 3. We are not currently in a loading state (e.g., from a previous action).
+    if (queryUrl && !initialQueryProcessed.current && !loading) {
+      console.log("Found URL in query parameter:", queryUrl);
+      initialQueryProcessed.current = true; // Mark as processed
+      // Optional: Populate the input field visually
+      // setInputValue(queryUrl);
+      // Trigger the submission process
+      submitUrl(queryUrl);
+    }
+    // This effect should run when searchParams changes or submitUrl reference changes.
+    // The initialQueryProcessed ref prevents re-submission on subsequent renders unless
+    // the component fully remounts (e.g., full page reload).
+    // If you needed it to re-submit when the *value* of 'q' changes via client-side
+    // navigation, the logic would need adjustment (e.g., storing the processed URL in the ref).
+  }, [searchParams, loading, submitUrl]);
+
+
+  // --- Form Submit Handler ---
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+    // Use the shared submission logic
+    submitUrl(inputValue);
+     // Clear input field after manual submission attempt starts
+     // Do this *after* calling submitUrl as it uses inputValue
+    setInputValue('');
   };
 
+  // --- Effect for Supabase Realtime Subscription ---
   useEffect(() => {
-    // Guard clause: Only run if submittedTask exists and has an ID
     if (!submittedTask?.id) {
-      // If there's an existing subscription when submittedTask becomes null/invalid, clean it up
       if (subscriptionRef.current) {
-          console.log(`Cleaning up subscription because submittedTask is null or invalid.`);
-          supabase.removeChannel(subscriptionRef.current);
-          subscriptionRef.current = null;
+        console.log(`Cleaning up subscription because submittedTask is null or invalid.`);
+        supabase.removeChannel(subscriptionRef.current);
+        subscriptionRef.current = null;
       }
       return;
     }
 
-
-    // Clean up previous subscription *before* creating a new one
-    // This handles rapid resubmissions correctly
+    // Cleanup previous subscription before creating a new one
     if (subscriptionRef.current) {
         supabase.removeChannel(subscriptionRef.current)
         .then(() => console.log(`Removed previous subscription channel.`))
@@ -211,21 +248,18 @@ export default function Home() {
 
     const handleBroadcast = (payload) => {
       console.log('Broadcast received:', payload);
-      // Ensure the payload is for the currently active submitted task ID
       if (payload.new && payload.new.id === submittedTask.id && payload.new.result) {
         console.log(`Result received for task ${submittedTask.id}:`, payload.new.result);
-        setResultValue(payload.new.result); // Update the result state
+        setResultValue(payload.new.result);
 
-        // Unsubscribe *after* receiving the result for this specific task
         if (subscriptionRef.current) {
             supabase.removeChannel(subscriptionRef.current)
             .then(() => console.log(`Unsubscribed after receiving result for task ${submittedTask.id}`))
             .catch(err => console.error("Error unsubscribing channel:", err));
-            subscriptionRef.current = null; // Clear the ref
+            subscriptionRef.current = null;
         }
       } else if (payload.new && payload.new.id === submittedTask.id) {
          console.log(`Update received for task ${submittedTask.id}, but no result yet. Status: ${payload.new.job_status}`);
-         // Optionally update status visually if needed, but requirement is not to show it
       } else {
          console.log(`Ignoring broadcast for different task ID (${payload.new?.id}) or missing data.`);
       }
@@ -249,20 +283,17 @@ export default function Home() {
         } else if (err) {
            console.error('Subscription error:', status, err);
            setError(`Subscription failed: ${err.message || status}`);
-           // Attempt cleanup on error
             if (subscriptionRef.current) {
                supabase.removeChannel(subscriptionRef.current);
                subscriptionRef.current = null;
             }
         } else {
-            console.log('Subscription status:', status); // Log other statuses like CLOSED, TIMED_OUT
+            console.log('Subscription status:', status);
         }
       });
 
-    // Store the channel in the ref
     subscriptionRef.current = channel;
 
-    // Cleanup function: This runs when the component unmounts OR when submittedTask changes
     return () => {
       if (subscriptionRef.current) {
         console.log(`Cleaning up subscription effect for task ID: ${submittedTask?.id}`);
@@ -271,58 +302,57 @@ export default function Home() {
         subscriptionRef.current = null;
       }
     };
-  // React Hook useEffect has a missing dependency: 'supabase'. Either include it or remove the dependency array.
-  // Supabase client instance is generally stable and often omitted, but adding it follows linting rules.
-  }, [submittedTask, supabase]); // Dependency array includes submittedTask
+  }, [submittedTask, supabase]); // Dependencies for subscription effect
 
-  // Determine if we should show the result view
-  // Show result view ONLY if we have a submitted task AND received a non-null result for *that* task
-  // Using submittedTask.url ensures we only show the image for the *current* task result
+  // Determine view based on state
   const showResultView = submittedTask?.url && resultValue !== null;
 
   return (
     <div style={styles.pageContainer}>
-      <GlobalStyles /> {/* Add global styles for spinner animation */}
+      <GlobalStyles />
 
       {showResultView ? (
-// --- Result View ---
-    <div style={styles.resultContainer}>
-      <img
-        key={submittedTask.id} // Keep the key
-        // Use the proxy endpoint
-        src={`/api/image-proxy?url=${encodeURIComponent(submittedTask.url)}`}
-        alt="Submitted content visualization"
-        style={styles.resultImage}
-        onError={(e) => {
-          // This error handler might still catch errors if the *proxy* fails
-          console.error("Failed to load image VIA PROXY for url:", submittedTask.url);
-          console.error("Proxy request URL:", e.target.src); // Log the proxy URL
-          e.target.style.display = 'none'; // Hide broken image icon
-          // Optionally display a generic placeholder
-          // e.target.src = '/placeholder-image.png';
-        }}
-      />
-      <p style={styles.resultText}>{resultValue}</p>
-    </div>
+        // --- Result View ---
+        <div style={styles.resultContainer}>
+          <img
+            key={submittedTask.id} // Use submittedTask.id for key
+            src={`/api/image-proxy?url=${encodeURIComponent(submittedTask.url)}`}
+            alt="Submitted content visualization"
+            style={styles.resultImage}
+            onError={(e) => {
+              console.error("Failed to load image VIA PROXY for url:", submittedTask.url);
+              e.target.style.display = 'none';
+            }}
+          />
+          <p style={styles.resultText}>{resultValue}</p>
+           {/* Optional: Add a button to start a new search */}
+           <button onClick={() => {
+               setSubmittedTask(null);
+               setResultValue(null);
+               setError(null);
+               setInputValue(''); // Clear input for next search
+               initialQueryProcessed.current = false; // Allow query param again if page reloads/navigates
+           }} style={{marginTop: '20px', padding: '10px 20px', cursor: 'pointer'}}>
+               New Search
+           </button>
+        </div>
       ) : (
         // --- Input View ---
-        // Render input view if not showing results OR if loading a new task
         <form onSubmit={handleSubmit} style={styles.formContainer}>
           <div style={styles.inputWrapper}>
             <input
               type="url"
-              placeholder="Enter image URL..."
+              placeholder="Enter LinkedIn media URL..."
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}
-              // Disable input only when actively submitting/loading
-              disabled={loading}
+              disabled={loading} // Disable input while loading
               style={styles.inputField}
-              required
+              required // Keep HTML5 validation
             />
             <button
               type="submit"
-              disabled={loading} // Disable button during loading
-              style={loading ? {...styles.searchButton, ...styles.searchButtonDisabled} : styles.searchButton}
+              disabled={loading || (!inputValue.trim() && !loading)} // Also disable if empty and not loading
+              style={loading || !inputValue.trim() ? {...styles.searchButton, ...styles.searchButtonDisabled} : styles.searchButton}
               aria-label="Submit task"
             >
               {loading ? (
@@ -332,7 +362,8 @@ export default function Home() {
               )}
             </button>
           </div>
-           {/* {error && <p style={{ color: 'red', textAlign: 'center', marginTop: '10px' }}>DEV ONLY: {error}</p>} */}
+           {/* Display user-friendly errors */}
+           {error && <p style={{ color: 'red', textAlign: 'center', marginTop: '10px' }}>Error: {error}</p>}
         </form>
       )}
     </div>
