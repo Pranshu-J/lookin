@@ -1,9 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-    plugins: {
-      "@tailwindcss/postcss": {},
-    },
-  output: 'standalone'
+  output: 'standalone',
+  reactStrictMode: true
   };
 
 export default nextConfig;
