@@ -1,112 +1,118 @@
-// app/page.js (or pages/index.js)
 'use client';
 
 import { useState, useEffect, useRef, useCallback, Suspense } from 'react';
-import { useSearchParams } from 'next/navigation'; // For SearchParamHandler
-import { supabase } from '../lib/supabaseClient'; // Adjust path if needed
+import { useSearchParams } from 'next/navigation';
+import { supabase } from '../lib/supabaseClient';
+import localFont from "next/font/local"
 
 // --- Components ---
 
+const sourceSans = localFont({
+  src: "./SourceSansPro/SourceSansPro-Regular.ttf",
+  display: 'swap',
+});
+
 // Simple SVG Magnifying Glass Icon component
 const SearchIcon = () => (
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    width="20"
-    height="20"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    <circle cx="11" cy="11" r="8"></circle>
-    <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-  </svg>
+  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
 );
 
 // Global CSS for animations or resets
 const GlobalStyles = () => (
   <style jsx global>{`
-    @keyframes spin {
-      0% { transform: rotate(0deg); }
-      100% { transform: rotate(360deg); }
-    }
-    /* Add any other global styles here */
-    body {
-      margin: 0; /* Example reset */
-      font-family: sans-serif; /* Example default font */
-      background-color: #f0f2f5; /* Example background */
-    }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    body { margin: 0; font-family: sans-serif; background-color: #f0f2f5; }
+    /* Ensure font is applied if needed globally or via className */
+    body { font-family: ${sourceSans.style.fontFamily}; }
   `}</style>
 );
 
-// --- Styles ---
+// Encryption Animation Component
+const generateRandomString = (length) => {
+    const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*()-=_+[]{}|;:,.<>?/~`';
+    let result = '';
+    for (let i = 0; i < length; i++) {
+      result += characters.charAt(Math.floor(Math.random() * characters.length));
+    }
+    return result;
+};
+
+const EncryptionAnimation = ({ isRunning, targetLength = 25 }) => { // Default length
+    const [displayText, setDisplayText] = useState('');
+    const intervalRef = useRef(null);
+    const animationFrameRef = useRef(null); // Use requestAnimationFrame
+
+    useEffect(() => {
+      if (isRunning) {
+        const updateText = () => {
+          setDisplayText(generateRandomString(targetLength));
+          animationFrameRef.current = requestAnimationFrame(updateText); // Loop
+        };
+        // Start the animation loop slightly delayed to ensure rendering
+        const timeoutId = setTimeout(() => {
+            animationFrameRef.current = requestAnimationFrame(updateText);
+        }, 60); // Adjust delay if needed
+
+
+        // Fallback interval clear just in case (though rAF is preferred)
+        if (intervalRef.current) clearInterval(intervalRef.current);
+         intervalRef.current = setInterval(() => { /* Keep it around for cleanup*/}, 1000); // Dummy interval for cleanup logic below
+
+
+      } else {
+         // Clear animation frame and interval
+        if (animationFrameRef.current) {
+          cancelAnimationFrame(animationFrameRef.current);
+          animationFrameRef.current = null;
+        }
+        if (intervalRef.current) {
+          clearInterval(intervalRef.current);
+          intervalRef.current = null;
+        }
+         // Optionally clear text when stopped
+         setDisplayText('');
+      }
+
+      // Cleanup function
+      return () => {
+        if (animationFrameRef.current) {
+          cancelAnimationFrame(animationFrameRef.current);
+           animationFrameRef.current = null;
+        }
+        if (intervalRef.current) {
+          clearInterval(intervalRef.current);
+          intervalRef.current = null;
+        }
+      };
+    }, [isRunning, targetLength]);
+
+    const animationStyle = {
+      fontFamily: 'monospace',
+      fontSize: '1.2rem',
+      color: 'black',
+      wordWrap: 'break-word',
+      textAlign: 'center',
+      minHeight: '1.5em', // Ensure space is reserved
+      marginTop: '10px',
+      padding: '0 10px',
+    };
+
+    // Render display text directly - useEffect controls the content
+    return <p style={animationStyle}>{displayText}</p>;
+};
+
+
+// --- Styles --- (Keep your existing styles object)
 const styles = {
-    pageContainer: {
-      display: 'flex',
-      justifyContent: 'center',
-      alignItems: 'center',
-      minHeight: '100vh',
-      width: '100%',
-      padding: '20px',
-      boxSizing: 'border-box',
-    },
-    formContainer: {
-      width: '100%',
-      maxWidth: '600px',
-    },
-    inputWrapper: {
-      position: 'relative',
-      display: 'flex',
-      alignItems: 'center',
-      backgroundColor: 'white',
-      borderRadius: '9999px',
-      border: '1px solid #ccc',
-      padding: '5px 5px 5px 25px',
-      boxShadow: '0 2px 5px rgba(0, 0, 0, 0.1)',
-    },
-    inputField: {
-      flexGrow: 1,
-      border: 'none',
-      outline: 'none',
-      fontSize: '1rem',
-      backgroundColor: 'transparent',
-      paddingRight: '60px', // Space for the button
-      height: '45px',
-      boxSizing: 'border-box',
-      color:"black", // Ensure text is visible
-    },
-    searchButton: {
-      position: 'absolute',
-      right: '5px',
-      top: '50%',
-      transform: 'translateY(-50%)',
-      width: '45px',
-      height: '45px',
-      borderRadius: '50%',
-      border: 'none',
-      backgroundColor: '#007bff',
-      color: 'white',
-      display: 'flex',
-      justifyContent: 'center',
-      alignItems: 'center',
-      cursor: 'pointer',
-      transition: 'background-color 0.2s ease',
-    },
-    searchButtonDisabled: {
-      backgroundColor: '#cccccc',
-      cursor: 'not-allowed',
-    },
-    spinner: {
-      border: '3px solid rgba(255, 255, 255, 0.3)',
-      borderTop: '3px solid #ffffff',
-      borderRadius: '50%',
-      width: '20px',
-      height: '20px',
-      animation: 'spin 1s linear infinite',
-    },
-    resultContainer: {
+    pageContainer: { display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', width: '100%', padding: '20px', boxSizing: 'border-box' },
+    formContainer: { width: '100%', maxWidth: '600px' },
+    inputWrapper: { position: 'relative', display: 'flex', alignItems: 'center', backgroundColor: 'white', borderRadius: '9999px', border: '1px solid #ccc', padding: '5px 5px 5px 25px', boxShadow: '0 2px 5px rgba(0, 0, 0, 0.1)' },
+    inputField: { flexGrow: 1, border: 'none', outline: 'none', fontSize: '1rem', backgroundColor: 'transparent', paddingRight: '60px', height: '45px', boxSizing: 'border-box', color:"black" },
+    searchButton: { position: 'absolute', right: '5px', top: '50%', transform: 'translateY(-50%)', width: '45px', height: '45px', borderRadius: '50%', border: 'none', backgroundColor: '#007bff', color: 'white', display: 'flex', justifyContent: 'center', alignItems: 'center', cursor: 'pointer', transition: 'background-color 0.2s ease' },
+    searchButtonDisabled: { backgroundColor: '#cccccc', cursor: 'not-allowed' },
+    spinner: { border: '3px solid rgba(255, 255, 255, 0.3)', borderTop: '3px solid #ffffff', borderRadius: '50%', width: '20px', height: '20px', animation: 'spin 1s linear infinite' },
+    // Updated: Result container always shows when displayUrl is set
+    processingContainer: {
       display: 'flex',
       flexDirection: 'column',
       alignItems: 'center',
@@ -115,63 +121,43 @@ const styles = {
       backgroundColor: 'white',
       borderRadius: '8px',
       boxShadow: '0 4px 10px rgba(0,0,0,0.1)',
+      width: '100%',
+      maxWidth: '600px', // Match form width
+      marginTop: '20px', // Add some space from top/form
     },
-    resultImage: {
-      width: '250px',
-      height: '250px',
-      borderRadius: '50%',
-      objectFit: 'cover',
-      marginBottom: '25px',
-      border: '3px solid #eee', // Changed border slightly
-      boxShadow: '0 4px 10px rgba(0,0,0,0.15)',
-      background: '#eee' // Fallback background
-    },
-    resultText: {
-      fontSize: '1.2rem',
-      color: '#333',
-      maxWidth: '600px',
-      wordWrap: 'break-word', // Ensure long text wraps
-      marginTop: '10px',
-    },
-    errorText: {
-      color: 'red',
-      textAlign: 'center',
-      marginTop: '10px',
-    },
-    loadingFallback: {
-      display: 'flex',
-      justifyContent: 'center',
-      alignItems: 'center',
-      minHeight: '100vh',
-      fontSize: '1.5rem',
-      color: '#555',
-    }
+    resultImage: { width: '200px', height: '200px', borderRadius: '50%', objectFit: 'cover', marginBottom: '25px', border: '3px solid #eee', boxShadow: '0 4px 10px rgba(0,0,0,0.15)', background: '#f0f2f5' /* Placeholder bg */ },
+    resultText: { fontSize: '1.2rem', color: 'black', maxWidth: '600px', wordWrap: 'break-word', marginTop: '10px', minHeight: '1.5em'}, // Added minHeight, changed color
+    errorText: { color: 'red', textAlign: 'center', marginTop: '10px', maxWidth: '600px', wordWrap: 'break-word', minHeight: '1.5em' }, // Added minHeight
+    loadingFallback: { display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', fontSize: '1.5rem', color: 'black' } // Changed color
 };
 
-// --- Component dedicated to handling search params ---
-// This component uses useSearchParams and MUST be rendered within a <Suspense> boundary
-function SearchParamHandler({ onSubmitUrl, initialLoading, initialTask }) {
-  // This hook triggers the Suspense boundary if used during SSR/prerendering
+// --- SearchParamHandler ---
+// No changes needed here, the logic seems sound.
+function SearchParamHandler({ onSubmitUrl, initialTask }) {
   const searchParams = useSearchParams();
+  const processedQueryUrlRef = useRef(null);
 
   useEffect(() => {
     const queryUrl = searchParams.get('q');
 
-    // Check if a query URL exists AND if we haven't already started processing
-    // from a previous render or manual submission.
-    if (queryUrl && !initialLoading && !initialTask) {
-      console.log(`SearchParamHandler: Found query URL, triggering submission: ${queryUrl}`);
+    // Ensure initialTask check is robust - trigger only if URL exists, hasn't been processed by *this effect instance*, AND no task active *initially*
+    if (queryUrl && queryUrl !== processedQueryUrlRef.current && !initialTask) {
+      console.log(`SearchParamHandler: Found query URL '${queryUrl}', haven't processed it yet and no initial task. Triggering submission.`);
+      processedQueryUrlRef.current = queryUrl; // Mark as processed *immediately*
       onSubmitUrl(queryUrl); // Call the memoized submission function from parent
+    } else if (queryUrl && queryUrl === processedQueryUrlRef.current) {
+        // console.log(`SearchParamHandler: Query URL ${queryUrl} already processed by this instance.`);
+    } else if (initialTask) {
+        // console.log(`SearchParamHandler: Initial task ID ${initialTask.id} exists, skipping query URL processing.`);
     }
-    // Dependencies: Run when search params change, or the parent component's state indicates readiness.
-  }, [searchParams, onSubmitUrl, initialLoading, initialTask]);
+     // console.log(`SearchParamHandler Effect Ran. QueryURL: ${queryUrl}, ProcessedRef: ${processedQueryUrlRef.current}, InitialTask: ${initialTask?.id}`);
 
-  // This component doesn't render anything itself
+  }, [searchParams, onSubmitUrl, initialTask]);
+
   return null;
 }
 
-// --- Loading Fallback Component ---
-// This is shown while the component using useSearchParams (SearchParamHandler) is loading
+// --- LoadingFallback ---
 function LoadingFallback() {
     return <div style={styles.loadingFallback}>Loading...</div>;
 }
@@ -179,257 +165,280 @@ function LoadingFallback() {
 // --- Main Page Component ---
 export default function Home() {
   const [inputValue, setInputValue] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(false); // Tracks the *entire* processing duration now
   const [error, setError] = useState(null);
   const [submittedTask, setSubmittedTask] = useState(null); // Stores the {id, url, ...} of the submitted task
   const [resultValue, setResultValue] = useState(null); // Stores the final result string
+  const [displayUrl, setDisplayUrl] = useState(null); // Stores the URL being processed/displayed
 
-  const subscriptionRef = useRef(null); // To manage the Supabase subscription
+  const subscriptionRef = useRef(null);
+
+  // --- Cleanup Subscription ---
+  const cleanupSubscription = useCallback(async (taskId) => {
+    if (subscriptionRef.current) {
+      console.log(`Cleaning up subscription for task ID: ${taskId || 'unknown'}`);
+      try {
+        const status = await supabase.removeChannel(subscriptionRef.current);
+        console.log(`Subscription removal status for ${taskId}:`, status);
+      } catch (err) {
+        console.error(`Error removing subscription channel for ${taskId}:`, err);
+      } finally {
+        subscriptionRef.current = null;
+      }
+    }
+  }, [supabase]); // Include supabase in dependencies
 
   // --- Memoized Submission Logic ---
-  // useCallback prevents this function from being recreated on every render,
-  // making it safe to use in useEffect dependency arrays.
   const submitUrlForProcessing = useCallback(async (urlToProcess) => {
+    // Basic validation
     if (!urlToProcess || !urlToProcess.trim()) {
-      console.warn("URL cannot be empty.");
-      setError("URL cannot be empty.");
-      return;
+        setError("URL cannot be empty.");
+        setDisplayUrl(null);
+        setLoading(false); // Ensure loading stops
+        return;
     }
-    // Basic validation - adjust as needed
-    if (!urlToProcess.includes("media.licdn.com")) {
-      console.warn("URL must be a LinkedIn media URL");
-      setError("Please enter a valid LinkedIn media URL (media.licdn.com).");
-      return;
+    // More specific validation
+    try {
+      const parsedUrl = new URL(urlToProcess);
+      if (!parsedUrl.hostname.endsWith('media.licdn.com')) {
+         throw new Error("Invalid Hostname");
+      }
+    } catch(e) {
+       setError("Please enter a valid LinkedIn media URL (e.g., https://media.licdn.com/...).");
+       setDisplayUrl(null);
+       setLoading(false); // Ensure loading stops
+       return;
     }
 
-    setLoading(true);
-    setError(null); // Clear previous errors
-    setResultValue(null); // Clear previous results
-    setSubmittedTask(null); // Reset submitted task state
-    console.log(`Attempting to submit URL: ${urlToProcess}`);
+    console.log(`Submitting URL: ${urlToProcess}`);
+    // Reset state for new submission
+    setLoading(true); // Start loading indicator immediately
+    setError(null);
+    setResultValue(null);
+    setSubmittedTask(null); // Clear previous task details
+    setDisplayUrl(urlToProcess); // Set URL for display *now*
+    await cleanupSubscription('previous'); // Clean up any old subscription before starting
 
     try {
-      const { data, error: insertError } = await supabase
-        .from('ImageURLs') // Your table name
-        .insert([{ url: urlToProcess, job_status: 'pending' }]) // Initial state
-        .select() // Select the newly inserted row
-        .single(); // Expect only one row back
+        const { data, error: insertError } = await supabase
+            .from('ImageURLs')
+            .insert([{ url: urlToProcess, job_status: 'pending' }])
+            .select() // Select the inserted row
+            .single(); // Expect a single row back
 
-      if (insertError) {
-        console.error("Supabase insert error:", insertError);
-        throw insertError; // Rethrow to be caught below
-      }
+        if (insertError) throw insertError;
 
-      if (data) {
-        console.log('Task submitted successfully via function:', data);
-        setSubmittedTask(data); // Set the submitted task state, which triggers the listener useEffect
-      } else {
-        // This case should be unlikely if insertError is null, but good practice
-        throw new Error("No data returned after insert, although no error was reported.");
-      }
+        if (data && data.id) {
+            console.log('Task submission successful, received task data:', data);
+            setSubmittedTask(data); // Store the submitted task details (triggers listener useEffect)
+            // setLoading remains true until result/error
+        } else {
+            // This case should ideally not happen with .select().single() if insert is successful
+            console.error("No data or ID returned after insert, though insert didn't error.", data);
+            throw new Error("Task submission failed: No task details received.");
+        }
     } catch (err) {
-      console.error("Error submitting task:", err);
-      setError(err.message || "Failed to submit the task. Please try again.");
-      setSubmittedTask(null); // Ensure task state is cleared on error
-    } finally {
-      // This runs whether the try block succeeded or failed
-      setLoading(false);
+        console.error("Error during task submission or insert:", err);
+        setError(err.message || "Failed to submit the task. Please try again.");
+        setSubmittedTask(null);
+        setDisplayUrl(null); // Optionally hide image on submission error, or keep it: setDisplayUrl(urlToProcess)
+        setLoading(false); // Stop loading indicator on submission error
     }
-  }, [supabase]); // Dependency: Only recreate if supabase client instance changes (unlikely)
+  }, [supabase, cleanupSubscription]); // Add cleanupSubscription dependency
+
 
   // --- Form Submit Handler ---
-  const handleSubmit = async (event) => {
-    event.preventDefault(); // Prevent default form submission page reload
-    // Call the memoized function with the current input value
-    await submitUrlForProcessing(inputValue);
-    // Clear input only if submission was initiated without immediate client-side error
-    // Note: submitUrlForProcessing sets error state, so we check it AFTER calling
-    if (!error) { // A basic check, might need refinement based on desired UX
-       setInputValue('');
-    }
+  const handleSubmit = (event) => {
+    event.preventDefault();
+    // No await needed here, let submitUrlForProcessing run async
+    submitUrlForProcessing(inputValue);
+    // Clear input after initiating submission
+    setInputValue('');
   };
 
   // --- UseEffect for Supabase Realtime Listener ---
   useEffect(() => {
-    // If there's no submitted task ID, don't set up a listener
-    if (!submittedTask?.id) {
-      // Cleanup potentially lingering subscription if task state becomes invalid
-      if (subscriptionRef.current) {
-        console.log(`Cleaning up subscription because submittedTask is null or has no ID.`);
-        supabase.removeChannel(subscriptionRef.current)
-          .catch(err => console.error("Error removing channel during cleanup:", err));
-        subscriptionRef.current = null;
-      }
-      return; // Exit effect
+    // Only proceed if we have a task ID and no active subscription
+    if (!submittedTask?.id || subscriptionRef.current) {
+      // If task becomes null, ensure cleanup happens (added safety)
+       if (!submittedTask?.id && subscriptionRef.current) {
+           console.log("Task cleared, ensuring subscription cleanup.")
+           cleanupSubscription(subscriptionRef.current.topic?.split('-').pop());
+       }
+      // console.log(`Listener Effect: Skipping setup. TaskID: ${submittedTask?.id}, SubRef: ${!!subscriptionRef.current}`);
+      return;
     }
 
-    // If a subscription already exists (e.g., from a rapid resubmit?), remove it first
-    if (subscriptionRef.current) {
-        console.log(`Removing previous channel before creating new one for task ${submittedTask.id}`);
-        supabase.removeChannel(subscriptionRef.current)
-          .catch(err => console.error("Error removing previous channel:", err));
-        subscriptionRef.current = null;
-    }
+    const currentTaskId = submittedTask.id;
+    console.log(`Setting up Supabase listener for task ID: ${currentTaskId}`);
 
-
-    console.log(`Setting up Supabase listener for task ID: ${submittedTask.id}`);
-
-    // Function to handle incoming messages
     const handleBroadcast = (payload) => {
-      console.log('Realtime update received:', payload);
-      // Check if the update is for the task we are interested in
-      if (payload.new && payload.new.id === submittedTask.id) {
-        // Check if the result field is now populated
-        if (payload.new.result) {
-          console.log(`Result received for task ${submittedTask.id}:`, payload.new.result);
-          setResultValue(payload.new.result); // Update state with the result
-          setError(null); // Clear any previous errors if we got a result
+      // Ensure the update is for the task we are currently tracking
+      if (payload.new && payload.new.id === currentTaskId) {
+        console.log(`Realtime update received for task ${currentTaskId}:`, payload.new);
+        const { result, job_status, error_message } = payload.new;
 
-          // Unsubscribe once we get the result to save resources
-          if (subscriptionRef.current) {
-            supabase.removeChannel(subscriptionRef.current)
-              .then(() => console.log(`Unsubscribed successfully after receiving result for task ${submittedTask.id}.`))
-              .catch(err => console.error("Error unsubscribing channel:", err));
-            subscriptionRef.current = null;
-          }
-        } else if (payload.new.job_status === 'failed') {
-            // Handle potential failure status from backend
-            console.error(`Task ${submittedTask.id} failed. Reason: ${payload.new.error_message || 'Unknown error'}`);
-            setError(`Processing failed: ${payload.new.error_message || 'An unknown error occurred during processing.'}`);
-            setResultValue(null); // Ensure no stale result is shown
-            // Optionally unsubscribe on failure too
-             if (subscriptionRef.current) {
-                supabase.removeChannel(subscriptionRef.current)
-                .catch(err => console.error("Error unsubscribing channel on failure:", err));
-                subscriptionRef.current = null;
-             }
+        if (result) {
+          console.log(`Result received for task ${currentTaskId}:`, result);
+          setResultValue(result);
+          setError(null);
+          setLoading(false); // Stop loading
+          cleanupSubscription(currentTaskId); // Unsubscribe on final result
+        } else if (job_status === 'failed') {
+          console.error(`Task ${currentTaskId} failed: ${error_message || 'Unknown error'}`);
+          setError(`Processing failed: ${error_message || 'Unknown error'}`);
+          setResultValue(null);
+          setLoading(false); // Stop loading
+          cleanupSubscription(currentTaskId); // Unsubscribe on failure
         } else {
-          // Log status updates if needed, but don't change primary state yet
-           console.log(`Update for task ${submittedTask.id}. Status: ${payload.new.job_status}. Waiting for result.`);
+          // Still pending or other status - keep loading
+          console.log(`Task ${currentTaskId} status: ${job_status}. Waiting...`);
+          setLoading(true); // Ensure loading remains true
         }
       } else {
-        // Log if we receive a message not matching the current task ID (shouldn't happen with filter)
-        console.log(`Ignoring broadcast not matching task ID ${submittedTask?.id}. Received for ID ${payload.new?.id}.`);
+         // console.log(`Realtime update received, but not for current task ${currentTaskId}. Payload ID: ${payload.new?.id}`);
       }
     };
 
-    // Create the subscription channel
     const channel = supabase
-      .channel(`imageurl-result-${submittedTask.id}`) // Unique channel name per task
+      .channel(`imageurl-result-${currentTaskId}`)
       .on(
         'postgres_changes',
-        {
-          event: 'UPDATE', // Listen for updates
-          schema: 'public',
-          table: 'ImageURLs', // Your table name
-          filter: `id=eq.${submittedTask.id}` // *Crucial*: Only listen for changes to THIS task's row
-        },
-        handleBroadcast // Call our handler function when a matching update occurs
+        { event: 'UPDATE', schema: 'public', table: 'ImageURLs', filter: `id=eq.${currentTaskId}` },
+        handleBroadcast
       )
       .subscribe((status, err) => {
-        // Optional: Log subscription status changes
          if (status === 'SUBSCRIBED') {
-           console.log(`Successfully subscribed to channel for task ${submittedTask.id}!`);
-         } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || err) {
-           console.error(`Subscription error for task ${submittedTask.id}:`, status, err);
-           setError(`Connection error: Could not listen for results. Status: ${status}`);
-           // Maybe attempt resubscribe logic here, or just inform user
+           console.log(`Successfully subscribed for task ${currentTaskId}!`);
+           setLoading(true); // Explicitly ensure loading is true upon successful subscription
+         } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED' || err) {
+           console.error(`Subscription error/closed for task ${currentTaskId}. Status: ${status}`, err || '');
+           // Avoid setting generic connection error if we already have a result/specific error
+           if (!resultValue && !error) {
+               setError(`Connection error listening for results. Please try again.`);
+           }
+           setLoading(false); // Stop loading on subscription issues
+           // Don't cleanup here, allow potential reconnect or handle specific errors
+           // cleanupSubscription(currentTaskId); might be too aggressive
          } else {
-           console.log(`Subscription status change for task ${submittedTask.id}: ${status}`);
+           console.log(`Subscription status for task ${currentTaskId}: ${status}`);
          }
       });
 
-    // Store the channel in the ref so we can unsubscribe later
     subscriptionRef.current = channel;
+    console.log(`Subscription ref set for channel: ${channel.topic}`);
 
-    // --- Cleanup Function ---
-    // This runs when the component unmounts OR when submittedTask changes (before the effect runs again)
+    // Cleanup function for this effect instance
     return () => {
-      if (subscriptionRef.current) {
-        console.log(`Cleaning up subscription effect for task ID: ${submittedTask?.id}`);
-        supabase.removeChannel(subscriptionRef.current)
-         .catch(err => console.error("Error cleaning up channel:", err));
-        subscriptionRef.current = null; // Clear the ref
-      }
+        console.log(`Running cleanup for listener effect (Task ID was ${currentTaskId})`);
+        cleanupSubscription(currentTaskId);
     };
-  }, [submittedTask, supabase]); // Dependencies: Re-run effect if submittedTask or supabase changes
+    // Dependencies: Only re-run if the submittedTask object itself changes (specifically its id) or cleanup function changes
+  }, [submittedTask, supabase, cleanupSubscription, error, resultValue]);
 
-  // --- Determine View ---
-  // Show result view ONLY if we have a submitted task AND its corresponding resultValue is set
-  const showResultView = submittedTask?.url && resultValue !== null;
+
+  // --- Determine if animation should run ---
+  // Animation runs if loading is true, we have a URL displayed, AND no final result/error has arrived.
+  const showAnimation = loading && displayUrl && !resultValue && !error;
+
+  // --- Determine if we should show the processing/result area ---
+  const showProcessingArea = !!displayUrl; // Show as soon as a URL is submitted and validated
 
   return (
-    // Wrap the part of the tree that depends on client-side info (useSearchParams) in Suspense
     <Suspense fallback={<LoadingFallback />}>
-      {/* Render the component that uses useSearchParams INSIDE Suspense */}
+       {/* SearchParamHandler is placed outside the main conditional rendering
+           but needs access to submitUrlForProcessing and the *current* submittedTask state */}
       <SearchParamHandler
         onSubmitUrl={submitUrlForProcessing}
-        initialLoading={loading}
-        initialTask={submittedTask}
+        initialTask={submittedTask} // Pass current task state
       />
 
-      {/* Main page structure */}
-      <div style={styles.pageContainer}>
+      <div style={styles.pageContainer} className={sourceSans.className}>
         <GlobalStyles />
 
-        {showResultView ? (
-          // --- Result View ---
-          <div style={styles.resultContainer}>
-            <img
-              // Use task ID in key for potential re-renders if task changes
-              key={submittedTask.id}
-              // Use the image proxy API route you might have created
-              // Ensure the URL is properly encoded
-              src={`/api/image-proxy?url=${encodeURIComponent(submittedTask.url)}`}
-              alt="Submitted content visualization"
-              style={styles.resultImage}
-              // Basic image error handling
-              onError={(e) => {
-                  console.error("Error loading image:", submittedTask.url);
-                  e.target.style.display = 'none'; // Hide broken image icon
-                  // Optionally show a placeholder or error message here
-              }}
-            />
-            <p style={styles.resultText}>{resultValue}</p>
-            {/* Optional: Button to clear results and start over */}
-            {/* <button onClick={() => {
-                setSubmittedTask(null);
-                setResultValue(null);
-                setError(null);
-                setInputValue(''); // Clear input too
-            }} style={{ marginTop: '20px', padding: '10px 15px' }}>
-              Start New Search
-            </button> */}
-          </div>
-        ) : (
-          // --- Input View ---
-          <form onSubmit={handleSubmit} style={styles.formContainer}>
+        {/* Always render the form container, but maybe hide/show form itself */}
+        <div style={styles.formContainer}>
+          {/* Input Form View - Conditionally hide if processing starts? Or just disable? */}
+          {/* Let's show it always but disable during loading */}
+           <form onSubmit={handleSubmit} style={{ marginBottom: showProcessingArea ? '20px' : '0' }}>
             <div style={styles.inputWrapper}>
               <input
-                type="url" // Use 'url' type for better mobile keyboards & basic validation
+                type="url"
                 placeholder="Paste LinkedIn image URL (media.licdn.com)..."
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
-                disabled={loading} // Disable input while loading
+                // Disable input field slightly differently: disable if a URL is currently being processed.
+                disabled={loading && !!displayUrl}
                 style={styles.inputField}
-                required // Basic HTML5 validation for empty field on manual submit
+                required
               />
               <button
                 type="submit"
-                disabled={loading || !inputValue.trim()} // Disable if loading or input is empty/whitespace
-                style={loading || !inputValue.trim() ? {...styles.searchButton, ...styles.searchButtonDisabled} : styles.searchButton}
-                aria-label="Submit URL for processing"
+                // Disable button if loading OR if input is empty OR invalid pattern (basic check)
+                disabled={loading || !inputValue.trim() || !inputValue.includes('media.licdn.com')}
+                style={(loading || !inputValue.trim() || !inputValue.includes('media.licdn.com')) ? {...styles.searchButton, ...styles.searchButtonDisabled} : styles.searchButton}
+                aria-label="Submit URL"
               >
-                {/* Show spinner when loading, otherwise show search icon */}
+                {/* Show spinner ONLY during active loading phase */}
                 {loading ? <div style={styles.spinner}></div> : <SearchIcon />}
               </button>
             </div>
-             {/* Display submission or connection errors */}
-             {error && !loading && <p style={styles.errorText}>{error}</p>}
-             {/* Optionally show a processing indicator even when not in result view */}
-             {loading && !resultValue && <p style={{ textAlign: 'center', marginTop: '10px', color: '#555' }}>Processing...</p>}
+             {/* Display validation errors related to the *input form* here */}
+             {error && !displayUrl && <p style={styles.errorText}>{error}</p>}
           </form>
-        )}
+
+           {/* --- Processing/Result View --- */}
+           {/* This section is rendered based on displayUrl state */}
+           {showProcessingArea && (
+             <div style={styles.processingContainer}>
+                <img
+                  key={displayUrl} // Re-render if displayUrl changes
+                  src={`/api/image-proxy?url=${encodeURIComponent(displayUrl)}`}
+                  alt="Submitted profile picture"
+                  style={styles.resultImage}
+                  onError={(e) => {
+                      console.error("Error loading image via proxy:", displayUrl);
+                      e.target.style.display = 'none'; // Hide broken image
+                      // Set an error state, but don't overwrite processing errors unless it's the only error
+                      setError(prev => prev ? `${prev}\n(Failed to load image preview)` : "Failed to load image preview.");
+                      // Don't stop loading here, the backend might still be processing
+                  }}
+                  onLoad={() => {
+                    // Optional: Clear image-specific error if it loads successfully later
+                    // setError(prev => prev?.includes("Failed to load image") ? null : prev);
+                  }}
+                />
+
+                {/* Display Area: Animation OR Result OR Error */}
+                <div style={{ minHeight: '3em' /* Reserve space */ }}>
+                  {showAnimation ? (
+                     <EncryptionAnimation isRunning={true} />
+                  ) : resultValue ? (
+                     <p style={styles.resultText}>{resultValue}</p>
+                  ) : error ? (
+                     // Show processing/connection errors here
+                     <p style={styles.errorText}>{error}</p>
+                  ) : null /* Fallback if needed */ }
+                </div>
+
+
+                {/* Button to start over - Show when processing is finished (result or error) */}
+                { !loading && (resultValue || error) &&
+                  <button onClick={() => {
+                      setDisplayUrl(null);
+                      setSubmittedTask(null);
+                      setResultValue(null);
+                      setError(null);
+                      setInputValue(''); // Clear input for next use
+                      setLoading(false); // Ensure loading is false
+                      cleanupSubscription('manual reset'); // Clean up just in case
+                  }} style={{ marginTop: '20px', padding: '10px 15px', cursor: 'pointer', fontSize: '0.9rem' }}>
+                    Search Another URL
+                  </button>
+                }
+             </div>
+           )}
+        </div> {/* End formContainer */}
       </div>
     </Suspense>
   );
